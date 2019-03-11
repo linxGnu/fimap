@@ -74,10 +74,10 @@ goversion: 1.12
 goos: darwin
 goarch: amd64
 pkg: github.com/linxGnu/fimap
-BenchmarkMapSmall-8      	   20000	     81113 ns/op	   47818 B/op	      66 allocs/op
-BenchmarkMapMedium-8     	       5	 327177149 ns/op	99879297 B/op	   76594 allocs/op
-BenchmarkMapLarge-8      	       1	1853012017 ns/op	403992160 B/op	  306862 allocs/op
-BenchmarkFIMapSmall-8    	   30000	     47431 ns/op	   98032 B/op	      17 allocs/op
-BenchmarkFIMapMedium-8   	       5	 257082510 ns/op	201326320 B/op	      39 allocs/op
-BenchmarkFIMapLarge-8    	       1	1369296578 ns/op	805306096 B/op	      43 allocs/op
+BenchmarkFIMapSmall-8    	   30000	     46605 ns/op	   98368 B/op	      23 allocs/op
+BenchmarkFIMapMedium-8   	       5	 249331752 ns/op	201326656 B/op	      45 allocs/op
+BenchmarkFIMapLarge-8    	       1	1552047534 ns/op	805306432 B/op	      49 allocs/op
+BenchmarkMapSmall-8      	   20000	     73819 ns/op	   47816 B/op	      66 allocs/op
+BenchmarkMapMedium-8     	       3	 386796535 ns/op	99884600 B/op	   76643 allocs/op
+BenchmarkMapLarge-8      	       1	2272066897 ns/op	403987432 B/op	  306803 allocs/op
 ```

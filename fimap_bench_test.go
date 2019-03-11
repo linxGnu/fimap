@@ -22,18 +22,6 @@ func init() {
 	largeSet = initializeSet(10000000) // 10 millions
 }
 
-func BenchmarkMapSmall(b *testing.B) {
-	benchmarkMap(b, smallSet)
-}
-
-func BenchmarkMapMedium(b *testing.B) {
-	benchmarkMap(b, mediumSet)
-}
-
-func BenchmarkMapLarge(b *testing.B) {
-	benchmarkMap(b, largeSet)
-}
-
 func BenchmarkFIMapSmall(b *testing.B) {
 	benchmarkFIMap(b, smallSet)
 }
@@ -46,9 +34,21 @@ func BenchmarkFIMapLarge(b *testing.B) {
 	benchmarkFIMap(b, largeSet)
 }
 
+func BenchmarkMapSmall(b *testing.B) {
+	benchmarkMap(b, smallSet)
+}
+
+func BenchmarkMapMedium(b *testing.B) {
+	benchmarkMap(b, mediumSet)
+}
+
+func BenchmarkMapLarge(b *testing.B) {
+	benchmarkMap(b, largeSet)
+}
+
 func benchmarkFIMap(b *testing.B, set []keyType) {
 	for i := 0; i < b.N; i++ {
-		s, _ := New(0, 0.75)
+		s, _ := New(0, 0.65)
 
 		var exist bool
 		for _, v := range set {

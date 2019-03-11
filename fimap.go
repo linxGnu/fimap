@@ -29,14 +29,12 @@ type Map struct {
 	freeVal    interface{} // value of 'free' key
 }
 
-//go:nosplit
 func phiMix(x keyType) (h keyType) {
 	h = x * PHI
 	h ^= h >> 16
 	return
 }
 
-//go:nosplit
 func nextPowerOf2(x uint32) uint32 {
 	if x == math.MaxUint32 {
 		return x
@@ -56,7 +54,6 @@ func nextPowerOf2(x uint32) uint32 {
 	return x + 1
 }
 
-//go:nosplit
 func arraySize(exp uint, fill float64) (s uint32) {
 	s = nextPowerOf2(uint32(math.Ceil(float64(exp) / fill)))
 	if s < 2 {
@@ -92,7 +89,6 @@ func New(size uint, fillFactor float64) (m *Map, err error) {
 }
 
 // Get value by key.
-//go:nosplit
 func (m *Map) Get(_key keyType) (_value interface{}, ok bool) {
 	if _key == freeKey {
 		_value, ok = m.freeVal, m.hasFreeKey
@@ -100,7 +96,7 @@ func (m *Map) Get(_key keyType) (_value interface{}, ok bool) {
 		return
 	}
 
-	ptr := (phiMix(_key) & m.mask)
+	ptr := phiMix(_key) & m.mask
 	keys := m.keys
 	key := keys[ptr]
 
@@ -127,7 +123,6 @@ func (m *Map) Get(_key keyType) (_value interface{}, ok bool) {
 }
 
 // Set key - value, overwrite if needed.
-//go:nosplit
 func (m *Map) Set(_key keyType, _value interface{}) {
 	if _key != freeKey {
 		if m.store(m.keys, m.values, _key, _value) {
@@ -145,10 +140,22 @@ func (m *Map) Set(_key keyType, _value interface{}) {
 	}
 }
 
+// Reset map, keep underlying allocated space.
+func (m *Map) Reset() {
+	for i, k := range m.keys {
+		if k != freeKey {
+			m.keys[i], m.values[i] = freeKey, nil
+		}
+	}
+
+	m.hasFreeKey, m.freeVal = false, nil
+
+	m.size = 0
+}
+
 // store on external keys/values collection
-//go:nosplit
 func (m *Map) store(keys []keyType, values []interface{}, _key keyType, _value interface{}) (isNew bool) {
-	ptr := (phiMix(_key) & m.mask)
+	ptr := phiMix(_key) & m.mask
 	key := keys[ptr]
 
 	if key == freeKey {
@@ -179,7 +186,6 @@ func (m *Map) store(keys []keyType, values []interface{}, _key keyType, _value i
 	}
 }
 
-//go:nosplit
 func (m *Map) rehash() {
 	originalLen := len(m.keys)
 
@@ -205,7 +211,6 @@ func (m *Map) rehash() {
 }
 
 // Iterate over map. Iteration will stop when handler return error.
-//go:nosplit
 func (m *Map) Iterate(handler func(keyType, interface{}) error) (err error) {
 	if handler != nil {
 		values := m.values
@@ -225,7 +230,6 @@ func (m *Map) Iterate(handler func(keyType, interface{}) error) (err error) {
 }
 
 // Clone creates new map, copied from original one.
-//go:nosplit
 func (m *Map) Clone() *Map {
 	c := *m
 
@@ -237,7 +241,6 @@ func (m *Map) Clone() *Map {
 }
 
 // Size returns size of the map.
-//go:nosplit
 func (m *Map) Size() int {
 	return m.size
 }

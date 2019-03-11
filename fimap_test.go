@@ -98,7 +98,7 @@ func testFIMap(m map[uint64]struct{}, t *testing.T) {
 
 	for k := range m {
 		if _, ok := s.Get(k); !ok {
-			t.Fatal()
+			t.Fatal(k)
 		}
 		if _, ok := s.Get(k + 2000000000); ok {
 			t.Fatal(k + 2000000000)
@@ -113,7 +113,7 @@ func testFIMap(m map[uint64]struct{}, t *testing.T) {
 		t.Fatal()
 	}
 
-	// try iterate
+	// iterate
 	s.Set(0, uint64(0)) // set free key
 	s.Iterate(func(k uint64, v interface{}) error {
 		if _v, ok := v.(uint64); !ok || _v != k {
@@ -122,9 +122,21 @@ func testFIMap(m map[uint64]struct{}, t *testing.T) {
 		return nil
 	})
 
-	// try iterate but stop with fake error
+	// iterate but stop with fake error
 	fakeErr := fmt.Errorf("fake error")
 	if s.Iterate(func(k uint64, v interface{}) error { return fakeErr }) != fakeErr {
 		t.Fatal()
+	}
+
+	// reset
+	oldLen := len(s.keys)
+	if s.Reset(); len(s.keys) != oldLen || len(s.values) != oldLen || s.size != 0 || s.hasFreeKey || s.freeVal != nil {
+		t.Fatal()
+	} else {
+		for i := range s.keys {
+			if s.keys[i] != freeKey || s.values[i] != nil {
+				t.Fatal()
+			}
+		}
 	}
 }
