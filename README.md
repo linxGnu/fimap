@@ -1,5 +1,10 @@
 # fimap
 
+[![Build Status](https://travis-ci.org/linxGnu/fimap.svg?branch=master)](https://travis-ci.org/linxGnu/fimap)
+[![Go Report Card](https://goreportcard.com/badge/github.com/linxGnu/fimap)](https://goreportcard.com/report/github.com/linxGnu/fimap)
+[![Coverage Status](https://coveralls.io/repos/github/linxGnu/fimap/badge.svg?branch=master)](https://coveralls.io/github/linxGnu/fimap?branch=master)
+[![godoc](https://img.shields.io/badge/docs-GoDoc-green.svg)](https://godoc.org/github.com/linxGnu/fimap)
+
 A fast map that uses `uint64` for the index key and `interface{}` for the data, based on http://java-performance.info/implementing-world-fastest-java-int-to-int-hash-map/
 
 It is 1.5-2X faster than the builtin map.
