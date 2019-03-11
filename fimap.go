@@ -204,6 +204,26 @@ func (m *Map) rehash() {
 	m.keys, m.values = keys, values
 }
 
+// Iterate over map. Iteration will stop when handler return error.
+//go:nosplit
+func (m *Map) Iterate(handler func(keyType, interface{}) error) (err error) {
+	if handler != nil {
+		values := m.values
+		for i, k := range m.keys {
+			if k != freeKey {
+				if err = handler(k, values[i]); err != nil {
+					return
+				}
+			}
+		}
+
+		if m.hasFreeKey {
+			err = handler(freeKey, m.freeVal)
+		}
+	}
+	return
+}
+
 // Clone creates new map, copied from original one.
 //go:nosplit
 func (m *Map) Clone() *Map {

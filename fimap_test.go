@@ -1,6 +1,7 @@
 package fimap
 
 import (
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -109,6 +110,21 @@ func testFIMap(m map[uint64]struct{}, t *testing.T) {
 	}
 
 	if cl := s.Clone(); !reflect.DeepEqual(cl, s) {
+		t.Fatal()
+	}
+
+	// try iterate
+	s.Set(0, uint64(0)) // set free key
+	s.Iterate(func(k uint64, v interface{}) error {
+		if _v, ok := v.(uint64); !ok || _v != k {
+			t.Fatal()
+		}
+		return nil
+	})
+
+	// try iterate but stop with fake error
+	fakeErr := fmt.Errorf("fake error")
+	if s.Iterate(func(k uint64, v interface{}) error { return fakeErr }) != fakeErr {
 		t.Fatal()
 	}
 }
