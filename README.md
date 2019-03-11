@@ -39,6 +39,12 @@ s.Size()
 
 // create new map and clone from orginal
 c := s.Clone()
+
+// iterate
+s.Iterate(func(key uint64, value interface{}) error {
+  // do some thing with key value
+  return nil // return non nil error if you want to stop iteration
+})
 ```
 
 ### Benchmark
