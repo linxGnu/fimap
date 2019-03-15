@@ -67,56 +67,80 @@ func TestNewFIMap(t *testing.T) {
 func TestFIMapOps(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		m := initTestData()
-		testFIMap(m, t)
+		testFIMap(t, m)
 	}
 }
 
-func initTestData() (m map[uint64]struct{}) {
-	m = make(map[uint64]struct{})
+func initTestData() (r []uint64) {
+	m := make(map[uint64]struct{})
 	for i := 0; i < 500000; i++ {
-		m[1+uint64(fastrand.Uint32n(2000000000))] = struct{}{}
+		m[124+uint64(fastrand.Uint32n(2000000000))] = struct{}{}
 	}
 	m[0] = struct{}{}
+
+	r = make([]uint64, 0, len(m))
+	for k := range m {
+		r = append(r, k)
+	}
+
 	return
 }
 
-func testFIMap(m map[uint64]struct{}, t *testing.T) {
+func testFIMap(t *testing.T, m []uint64) {
 	s, _ := New(1000, 0.5)
 
-	if _, ok := s.Get(0); ok {
-		t.Fatal()
+	removeNotExist := func(x keyType) {
+		if _, ok := s.Get(x); ok {
+			t.Fatal()
+		}
+
+		oldSize := s.size
+
+		s.Remove(x)
+		if s.size != oldSize {
+			t.Fatal()
+		}
 	}
 
-	if _, ok := s.Get(123); ok {
-		t.Fatal()
-	}
+	removeNotExist(0)
+	removeNotExist(122)
+	removeNotExist(123)
 
-	for k := range m {
-		s.Set(k, k) // try duplicate put
+	// try to put
+	for _, k := range m {
 		s.Set(k, k)
+		s.Set(k, k+1) // duplicate put
 	}
 
-	for k := range m {
-		if _, ok := s.Get(k); !ok {
+	// check size
+	if s.Size() != len(m) {
+		t.Fatal()
+	}
+
+	for _, k := range m {
+		if x, ok := s.Get(k); !ok || x != k+1 {
 			t.Fatal(k)
 		}
+
 		if _, ok := s.Get(k + 2000000000); ok {
 			t.Fatal(k + 2000000000)
 		}
 	}
 
-	if s.Size() != len(m) {
+	// try to clone
+	cl := s.Clone()
+	if !reflect.DeepEqual(cl, s) {
 		t.Fatal()
 	}
 
-	if cl := s.Clone(); !reflect.DeepEqual(cl, s) {
-		t.Fatal()
-	}
+	// try to remove on clone
+	testRemoveOneByOne(t, cl, m)
 
 	// iterate
 	s.Set(0, uint64(0)) // set free key
 	s.Iterate(func(k uint64, v interface{}) error {
-		if _v, ok := v.(uint64); !ok || _v != k {
+		if _v, ok := v.(uint64); !ok || (k != 0 && _v != k+1) || (k == 0 && _v != 0) {
+			t.Log(_v, k)
 			t.Fatal()
 		}
 		return nil
@@ -138,5 +162,35 @@ func testFIMap(m map[uint64]struct{}, t *testing.T) {
 				t.Fatal()
 			}
 		}
+	}
+}
+
+func testRemoveOneByOne(t *testing.T, s *Map, m []uint64) {
+	// remove all on clone
+	for _, k := range m {
+		if x, ok := s.Get(k); !ok || x != k+1 {
+			t.Fatal(k)
+		}
+
+		oldSize := s.size
+		s.Remove(k)
+		if s.size != oldSize-1 {
+			t.Fatal()
+		}
+
+		if _, ok := s.Get(k); ok {
+			t.Fatal(k)
+		}
+	}
+
+	// check again on clone
+	for i := range s.keys {
+		if s.keys[i] != freeKey || s.values[i] != nilValue {
+			t.Fatal()
+		}
+	}
+
+	if len(s.keys) != 2 {
+		t.Fatal()
 	}
 }

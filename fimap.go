@@ -5,31 +5,38 @@ import (
 	"math"
 )
 
+type (
+	keyType   = uint64
+	valueType = interface{}
+)
+
 const (
 	// PHI is for scrambling the keys
 	PHI = 0x9E3779B9
 
-	freeKey = 0
+	freeKey keyType = 0
 )
 
-type keyType = uint64
+var (
+	nilValue = valueType(nil)
+)
 
-// Map is a fast key (uint64) - value (interface{}) map.
+// Map is a fast key (uint64) - value (valueType) map.
 type Map struct {
 	keys   []keyType
-	values []interface{}
+	values []valueType
 
 	fillFactor float64
 	threshold  int // we will resize a map once it reaches this size
 	size       int
 
-	mask keyType
+	mask uint64
 
-	hasFreeKey bool        // have 'free' key in the map?
-	freeVal    interface{} // value of 'free' key
+	hasFreeKey bool      // have 'free' key in the map?
+	freeVal    valueType // value of 'free' key
 }
 
-func phiMix(x keyType) (h keyType) {
+func phiMix(x uint64) (h uint64) {
 	h = x * PHI
 	h ^= h >> 16
 	return
@@ -77,61 +84,45 @@ func New(size uint, fillFactor float64) (m *Map, err error) {
 
 	capacity := arraySize(size, fillFactor)
 	m = &Map{
-		keys:   make([]keyType, capacity), // x2 capacity for level-2
-		values: make([]interface{}, capacity),
+		keys:   make([]keyType, capacity),
+		values: make([]valueType, capacity),
 
 		fillFactor: fillFactor,
 		threshold:  int(math.Floor(float64(capacity>>1) * fillFactor)),
 
-		mask: keyType(capacity) - 1,
+		mask: uint64(capacity) - 1,
 	}
 	return
 }
 
 // Get value by key.
-func (m *Map) Get(_key keyType) (_value interface{}, ok bool) {
-	if _key == freeKey {
-		_value, ok = m.freeVal, m.hasFreeKey
+func (m *Map) Get(k keyType) (v valueType, found bool) {
+	ind := index(m.keys, m.mask, k)
 
-		return
-	}
-
-	ptr := phiMix(_key) & m.mask
-	keys := m.keys
-	key := keys[ptr]
-
-	if key == _key {
-		_value, ok = m.values[ptr], true
-		return
-	}
-	if key == freeKey { // end of chain
-		return
-	}
-
-	for {
-		ptr = (ptr + 1) & m.mask
-		key = keys[ptr]
-
-		if key == _key {
-			_value, ok = m.values[ptr], true
-			return
+	if ind >= 0 {
+		if m.keys[ind] != freeKey {
+			v, found = m.values[ind], true
 		}
-		if key == freeKey { // end of chain
-			return
-		}
+		return
 	}
+
+	if m.hasFreeKey {
+		v, found = m.freeVal, true
+	}
+
+	return
 }
 
 // Set key - value, overwrite if needed.
-func (m *Map) Set(_key keyType, _value interface{}) {
-	if _key != freeKey {
-		if m.store(m.keys, m.values, _key, _value) {
+func (m *Map) Set(k keyType, v valueType) {
+	if k != freeKey {
+		if m.store(m.keys, m.values, m.mask, k, v) {
 			if m.size++; m.size > m.threshold {
-				m.rehash()
+				m.grow()
 			}
 		}
 	} else {
-		m.freeVal = _value
+		m.freeVal = v
 
 		if !m.hasFreeKey {
 			m.hasFreeKey = true
@@ -140,78 +131,84 @@ func (m *Map) Set(_key keyType, _value interface{}) {
 	}
 }
 
-// Reset map, keep underlying allocated space.
-func (m *Map) Reset() {
-	for i, k := range m.keys {
-		if k != freeKey {
-			m.keys[i], m.values[i] = freeKey, nil
-		}
+func dist(center, x, nMask uint64) uint64 {
+	if x >= center {
+		return x - center
 	}
-
-	m.hasFreeKey, m.freeVal = false, nil
-
-	m.size = 0
+	return nMask + 1 - center + x
 }
 
-// store on external keys/values collection
-func (m *Map) store(keys []keyType, values []interface{}, _key keyType, _value interface{}) (isNew bool) {
-	ptr := phiMix(_key) & m.mask
-	key := keys[ptr]
+// Remove an element
+func (m *Map) Remove(k keyType) {
+	var (
+		keys, values, mask = m.keys, m.values, m.mask
+		phi                uint64
+		key                keyType
+	)
 
-	if key == freeKey {
-		keys[ptr], values[ptr] = _key, _value
-		isNew = true
-		return
-	}
-	if key == _key {
-		values[ptr] = _value
-		isNew = false
-		return
-	}
+	ind := index(keys, mask, k)
 
-	for {
-		ptr = (ptr + 1) & m.mask
-		key = keys[ptr]
+	if ind >= 0 {
+		if keys[ind] != freeKey { // could remove
+			m.size--
 
-		if key == freeKey {
-			keys[ptr], values[ptr] = _key, _value
-			isNew = true
+			// find start position of block
+			startPos := uint64(ind)
+
+		findStartPosLoop:
+			if key = keys[startPos]; key != freeKey {
+				phi = phiMix(uint64(key)) & mask
+
+				if phi != startPos && keys[phi] != freeKey {
+					startPos = phi
+					goto findStartPosLoop
+				}
+
+				if startPos == 0 {
+					startPos = mask
+				} else {
+					startPos = (startPos - 1) & mask
+				}
+				goto findStartPosLoop
+			}
+
+			// set free at ind
+			keys[ind], values[ind] = freeKey, nilValue
+
+			freePtr := uint64(ind) // free position
+			dis := dist(startPos, freePtr, mask)
+			ptr := freePtr
+
+		loop:
+			ptr = (ptr + 1) & mask
+
+			if key = keys[ptr]; key != freeKey {
+				if phi = phiMix(uint64(key)) & mask; dist(startPos, phi, mask) <= dis { // swapable
+					keys[freePtr], values[freePtr] = key, values[ptr]
+					keys[ptr], values[ptr] = freeKey, nilValue
+
+					freePtr = ptr
+					dis = dist(startPos, freePtr, mask)
+				}
+
+				goto loop
+			}
+
+			m.shrink()
 			return
 		}
-		if key == _key {
-			values[ptr] = _value
-			isNew = false
-			return
-		}
-	}
-}
 
-func (m *Map) rehash() {
-	originalLen := len(m.keys)
-
-	// new capacity
-	newCapacity := keyType(originalLen) << 1
-
-	// update threshold and mask
-	m.threshold = int(math.Floor(float64(newCapacity) * m.fillFactor))
-	m.mask = newCapacity - 1
-
-	// original keys, values
-	oriKeys, oriValues := m.keys, m.values
-
-	// write to new data
-	keys, values := make([]keyType, newCapacity), make([]interface{}, newCapacity)
-	for i, oriKey := range oriKeys {
-		if oriKey != freeKey {
-			m.store(keys, values, oriKey, oriValues[i])
-		}
+		return
 	}
 
-	m.keys, m.values = keys, values
+	if m.hasFreeKey {
+		m.freeVal, m.hasFreeKey = nilValue, false
+		m.size--
+	}
 }
 
 // Iterate over map. Iteration will stop when handler return error.
-func (m *Map) Iterate(handler func(keyType, interface{}) error) (err error) {
+func (m *Map) Iterate(handler func(keyType, valueType) error) (err error) {
 	if handler != nil {
 		values := m.values
 		for i, k := range m.keys {
@@ -233,7 +230,7 @@ func (m *Map) Iterate(handler func(keyType, interface{}) error) (err error) {
 func (m *Map) Clone() *Map {
 	c := *m
 
-	c.keys, c.values = make([]keyType, len(m.keys)), make([]interface{}, len(m.keys))
+	c.keys, c.values = make([]keyType, len(m.keys)), make([]valueType, len(m.keys))
 	copy(c.keys, m.keys)
 	copy(c.values, m.values)
 
@@ -243,4 +240,112 @@ func (m *Map) Clone() *Map {
 // Size returns size of the map.
 func (m *Map) Size() int {
 	return m.size
+}
+
+// Reset map, keep underlying allocated space.
+func (m *Map) Reset() {
+	for i, k := range m.keys {
+		if k != freeKey {
+			m.keys[i], m.values[i] = freeKey, nilValue
+		}
+	}
+
+	m.hasFreeKey, m.freeVal = false, nilValue
+
+	m.size = 0
+}
+
+func index(keys []keyType, mask uint64, k keyType) (ind int) {
+	if k != freeKey {
+		ptr := phiMix(uint64(k)) & mask
+
+		key := keys[ptr]
+
+		if key == k || key == freeKey {
+			ind = int(ptr)
+			return
+		}
+
+	loop:
+		ptr = (ptr + 1) & mask
+		key = keys[ptr]
+
+		if key == k || key == freeKey {
+			ind = int(ptr)
+			return
+		}
+		goto loop
+	}
+
+	ind = -1
+	return
+}
+
+// store on external keys/values collection
+func (m *Map) store(keys []keyType, values []valueType, mask uint64, k keyType, v valueType) (isNew bool) {
+	ind := index(keys, mask, k)
+
+	isNew = keys[ind] == freeKey
+
+	if isNew {
+		keys[ind], values[ind] = k, v
+	} else {
+		values[ind] = v
+	}
+
+	return
+}
+
+func (m *Map) grow() {
+	originalLen := len(m.keys)
+
+	// new capacity
+	newCapacity := keyType(originalLen) << 1
+
+	// update threshold and mask
+	m.threshold = int(math.Floor(float64(newCapacity) * m.fillFactor))
+
+	m.mask = newCapacity - 1
+	mask := m.mask
+
+	// original keys, values
+	oriKeys, oriValues := m.keys, m.values
+
+	// write to new data
+	keys, values := make([]keyType, newCapacity), make([]valueType, newCapacity)
+	for i, oriKey := range oriKeys {
+		if oriKey != freeKey {
+			m.store(keys, values, mask, oriKey, oriValues[i])
+		}
+	}
+
+	m.keys, m.values = keys, values
+}
+
+func (m *Map) shrink() {
+	if m.size < m.threshold>>1 {
+		originalLen := len(m.keys)
+
+		// new capacity
+		newCapacity := keyType(originalLen) >> 1
+
+		// update threshold and mask
+		m.threshold = int(math.Floor(float64(newCapacity) * m.fillFactor))
+
+		m.mask = newCapacity - 1
+		mask := m.mask
+
+		// original keys, values
+		oriKeys, oriValues := m.keys, m.values
+
+		// write to new data
+		keys, values := make([]keyType, newCapacity), make([]valueType, newCapacity)
+		for i, oriKey := range oriKeys {
+			if oriKey != freeKey {
+				m.store(keys, values, mask, oriKey, oriValues[i])
+			}
+		}
+
+		m.keys, m.values = keys, values
+	}
 }
