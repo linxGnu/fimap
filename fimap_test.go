@@ -3,69 +3,64 @@ package fimap
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fastrand"
 )
 
 func TestArraySize(t *testing.T) {
-	if arraySize(0, 12) != 2 {
-		t.Fatal()
-	}
-
-	if arraySize(math.MaxUint32, 1) != math.MaxUint32 {
-		t.Fatal()
-	}
+	require.EqualValues(t, 2, arraySize(0, 12))
+	require.EqualValues(t, math.MaxUint32, arraySize(math.MaxUint32, 1))
 }
 
 func TestNewFIMap(t *testing.T) {
-	if _, err := New(120, 1); err == nil {
-		t.Fatal()
-	}
-	if _, err := New(120, 0); err == nil {
-		t.Fatal()
-	}
-	if _, err := New(120, 2); err == nil {
-		t.Fatal()
-	}
-	if _, err := New(120, -1); err == nil {
-		t.Fatal()
-	}
-	if _, err := New(0, 0.9); err != nil {
-		t.Fatal()
-	}
-	if _, err := New(1, 0.9); err != nil {
-		t.Fatal()
-	}
+	_, err := New(120, 1)
+	require.NotNil(t, err)
+
+	_, err = New(120, 0)
+	require.NotNil(t, err)
+
+	_, err = New(120, 2)
+	require.NotNil(t, err)
+
+	_, err = New(120, -1)
+	require.NotNil(t, err)
+
+	_, err = New(1, 0.9)
+	require.Nil(t, err)
+
+	_, err = New(0, 0.9)
+	require.Nil(t, err)
 
 	// Test basic ops
-	s, _ := New(1000, 0.5)
+	s, err := New(1000, 0.5)
+	require.Nil(t, err)
+
 	s.Set(123, struct{}{})
 	s.Set(456, 789)
 	s.Set(1, uint64(128))
 
-	if v, ok := s.Get(123); !ok {
-		t.Fatal()
-	} else if _, ok = v.(struct{}); !ok {
-		t.Fatal(reflect.TypeOf(v))
-	}
+	v, ok := s.Get(123)
+	require.True(t, ok)
+	_, ok = v.(struct{})
+	require.True(t, ok)
 
-	if v, ok := s.Get(456); !ok {
-		t.Fatal()
-	} else if _v, ok := v.(int); !ok || _v != 789 {
-		t.Fatal(reflect.TypeOf(v))
-	}
+	v, ok = s.Get(456)
+	require.True(t, ok)
+	_v, ok := v.(int)
+	require.True(t, ok)
+	require.EqualValues(t, 789, _v)
 
-	if v, ok := s.Get(1); !ok {
-		t.Fatal()
-	} else if _v, ok := v.(uint64); !ok || _v != 128 {
-		t.Fatal(reflect.TypeOf(v))
-	}
+	v, ok = s.Get(1)
+	require.True(t, ok)
+	__v, ok := v.(uint64)
+	require.True(t, ok)
+	require.EqualValues(t, 128, __v)
 }
 
 func TestFIMapOps(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 5; i++ {
 		m := initTestData()
 		testFIMap(t, m)
 	}
@@ -90,16 +85,13 @@ func testFIMap(t *testing.T, m []uint64) {
 	s, _ := New(1000, 0.5)
 
 	removeNotExist := func(x keyType) {
-		if _, ok := s.Get(x); ok {
-			t.Fatal()
-		}
+		_, ok := s.Get(x)
+		require.False(t, ok)
 
 		oldSize := s.size
 
 		s.Remove(x)
-		if s.size != oldSize {
-			t.Fatal()
-		}
+		require.EqualValues(t, oldSize, s.size)
 	}
 
 	removeNotExist(0)
@@ -113,32 +105,27 @@ func testFIMap(t *testing.T, m []uint64) {
 	}
 
 	// check size
-	if s.Size() != len(m) {
-		t.Fatal()
-	}
+	require.EqualValues(t, len(m), s.Size())
 
 	for _, k := range m {
-		if x, ok := s.Get(k); !ok || x != k+1 {
-			t.Fatal(k)
-		}
+		x, ok := s.Get(k)
+		require.True(t, ok)
+		require.EqualValues(t, k+1, x)
 
-		if _, ok := s.Get(k + 2000000000); ok {
-			t.Fatal(k + 2000000000)
-		}
+		_, ok = s.Get(k + 2000000000)
+		require.False(t, ok)
 	}
 
 	// try to clone
 	cl := s.Clone()
-	if !reflect.DeepEqual(cl, s) {
-		t.Fatal()
-	}
+	require.EqualValues(t, s, cl)
 
 	// try to remove on clone
 	testRemoveOneByOne(t, cl, m)
 
 	// iterate
 	s.Set(0, uint64(0)) // set free key
-	s.Iterate(func(k uint64, v interface{}) error {
+	_ = s.Iterate(func(k uint64, v interface{}) error {
 		if _v, ok := v.(uint64); !ok || (k != 0 && _v != k+1) || (k == 0 && _v != 0) {
 			t.Log(_v, k)
 			t.Fatal()
@@ -148,49 +135,43 @@ func testFIMap(t *testing.T, m []uint64) {
 
 	// iterate but stop with fake error
 	fakeErr := fmt.Errorf("fake error")
-	if s.Iterate(func(k uint64, v interface{}) error { return fakeErr }) != fakeErr {
-		t.Fatal()
-	}
+	require.EqualValues(t, fakeErr, s.Iterate(func(k uint64, v interface{}) error { return fakeErr }))
 
 	// reset
 	oldLen := len(s.keys)
-	if s.Reset(); len(s.keys) != oldLen || len(s.values) != oldLen || s.size != 0 || s.hasFreeKey || s.freeVal != nil {
-		t.Fatal()
-	} else {
-		for i := range s.keys {
-			if s.keys[i] != freeKey || s.values[i] != nil {
-				t.Fatal()
-			}
-		}
+	s.Reset()
+	require.EqualValues(t, oldLen, len(s.keys))
+	require.EqualValues(t, oldLen, len(s.values))
+	require.EqualValues(t, 0, s.size)
+	require.Equal(t, nil, s.freeVal)
+	require.False(t, s.hasFreeKey)
+	for i := range s.keys {
+		require.Equal(t, freeKey, s.keys[i])
+		require.Equal(t, nil, s.values[i])
 	}
 }
 
 func testRemoveOneByOne(t *testing.T, s *Map, m []uint64) {
-	// remove all on clone
+	// remove all
 	for _, k := range m {
-		if x, ok := s.Get(k); !ok || x != k+1 {
-			t.Fatal(k)
-		}
+		x, ok := s.Get(k)
+		require.True(t, ok)
+		require.EqualValues(t, k+1, x)
 
 		oldSize := s.size
 		s.Remove(k)
-		if s.size != oldSize-1 {
-			t.Fatal()
-		}
+		require.EqualValues(t, oldSize-1, s.size)
 
-		if _, ok := s.Get(k); ok {
-			t.Fatal(k)
-		}
+		_, ok = s.Get(k)
+		require.False(t, ok)
 	}
 
-	// check again on clone
+	// check again
 	for i := range s.keys {
-		if s.keys[i] != freeKey || s.values[i] != nilValue {
-			t.Fatal()
-		}
+		require.Equal(t, freeKey, s.keys[i])
+		require.Equal(t, nil, s.values[i])
 	}
 
-	if len(s.keys) != 2 {
-		t.Fatal()
-	}
+	// check shrink happened?
+	require.EqualValues(t, 2, len(s.keys))
 }

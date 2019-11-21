@@ -69,15 +69,13 @@ Hardware:
 ```
 
 ```scala
-goversion: 1.12
-
 goos: darwin
 goarch: amd64
 pkg: github.com/linxGnu/fimap
-BenchmarkFIMapSmall-8    	   30000	     47060 ns/op	   98368 B/op	      23 allocs/op
-BenchmarkFIMapMedium-8   	       5	 267164702 ns/op	201326656 B/op	      45 allocs/op
-BenchmarkFIMapLarge-8    	       1	1665465441 ns/op	805306432 B/op	      49 allocs/op
-BenchmarkMapSmall-8      	   20000	     79285 ns/op	   47814 B/op	      65 allocs/op
-BenchmarkMapMedium-8     	       3	 383101179 ns/op	99880053 B/op	   76588 allocs/op
-BenchmarkMapLarge-8      	       1	2242347725 ns/op	404004624 B/op	  307234 allocs/op
+BenchmarkFIMapSmall-8              22826             52884 ns/op           98368 B/op         23 allocs/op
+BenchmarkFIMapMedium-8                 5         235211344 ns/op        201326656 B/op        45 allocs/op
+BenchmarkFIMapLarge-8                  1        1515300167 ns/op        805306432 B/op        49 allocs/op
+BenchmarkMapSmall-8                13306             89721 ns/op           47813 B/op         65 allocs/op
+BenchmarkMapMedium-8                   3         406576060 ns/op        99906680 B/op      76844 allocs/op
+BenchmarkMapLarge-8                    1        2055357735 ns/op        403988760 B/op    306818 allocs/op
 ```
