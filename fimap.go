@@ -97,45 +97,37 @@ func New(size uint, fillFactor float64) (m *Map, err error) {
 
 // Get value by key.
 func (m *Map) Get(k keyType) (v valueType, found bool) {
-	ind := index(m.keys, m.mask, k)
-
-	if ind >= 0 {
-		if m.keys[ind] != freeKey {
+	if k != freeKey {
+		if ind := index(m.keys, m.mask, k); m.keys[ind] != freeKey {
 			v, found = m.values[ind], true
 		}
-		return
+	} else {
+		v, found = m.freeVal, m.hasFreeKey
 	}
-
-	if m.hasFreeKey {
-		v, found = m.freeVal, true
-	}
-
 	return
 }
 
 // Set key - value, overwrite if needed.
 func (m *Map) Set(k keyType, v valueType) {
 	if k != freeKey {
-		if m.store(m.keys, m.values, m.mask, k, v) {
+		if store(m.keys, m.values, m.mask, k, v) {
 			if m.size++; m.size > m.threshold {
 				m.grow()
 			}
 		}
-	} else {
-		m.freeVal = v
-
-		if !m.hasFreeKey {
-			m.hasFreeKey = true
-			m.size++
-		}
+	} else if m.freeVal = v; !m.hasFreeKey {
+		m.hasFreeKey = true
+		m.size++
 	}
 }
 
-func dist(center, x, nMask uint64) uint64 {
-	if x >= center {
-		return x - center
+func distance(center, ind, nMask uint64) (dis uint64) {
+	if ind >= center {
+		dis = ind - center
+	} else {
+		dis = nMask + 1 - center + ind
 	}
-	return nMask + 1 - center + x
+	return
 }
 
 // Remove an element
@@ -146,64 +138,65 @@ func (m *Map) Remove(k keyType) {
 		key                keyType
 	)
 
-	ind := index(keys, mask, k)
-
-	if ind >= 0 {
-		if keys[ind] != freeKey { // could remove
+	if k == freeKey {
+		if m.hasFreeKey {
+			m.freeVal, m.hasFreeKey = nilValue, false
 			m.size--
-
-			// find start position of block
-			startPos := uint64(ind)
-
-		findStartPosLoop:
-			if key = keys[startPos]; key != freeKey {
-				phi = phiMix(uint64(key)) & mask
-
-				if phi != startPos && keys[phi] != freeKey {
-					startPos = phi
-					goto findStartPosLoop
-				}
-
-				if startPos == 0 {
-					startPos = mask
-				} else {
-					startPos = (startPos - 1) & mask
-				}
-				goto findStartPosLoop
-			}
-
-			// set free at ind
-			keys[ind], values[ind] = freeKey, nilValue
-
-			freePtr := uint64(ind) // free position
-			dis := dist(startPos, freePtr, mask)
-			ptr := freePtr
-
-		loop:
-			ptr = (ptr + 1) & mask
-
-			if key = keys[ptr]; key != freeKey {
-				if phi = phiMix(uint64(key)) & mask; dist(startPos, phi, mask) <= dis { // swapable
-					keys[freePtr], values[freePtr] = key, values[ptr]
-					keys[ptr], values[ptr] = freeKey, nilValue
-
-					freePtr = ptr
-					dis = dist(startPos, freePtr, mask)
-				}
-
-				goto loop
-			}
-
-			m.shrink()
-			return
 		}
-
 		return
 	}
 
-	if m.hasFreeKey {
-		m.freeVal, m.hasFreeKey = nilValue, false
+	// could remove?
+	if ind := index(keys, mask, k); keys[ind] != freeKey {
 		m.size--
+
+		// find start position of current block
+		startPos := uint64(ind)
+
+	findStartPosLoop:
+		if key = keys[startPos]; key != freeKey {
+			phi = phiMix(uint64(key)) & mask
+
+			// check if we could jump to phi right now
+			if phi != startPos && keys[phi] != freeKey {
+				startPos = phi
+				goto findStartPosLoop
+			}
+
+			// if not, just move back to 1 step
+			if startPos == 0 {
+				startPos = mask
+			} else {
+				startPos = (startPos - 1) & mask
+			}
+			goto findStartPosLoop
+		}
+
+		// set free at ind
+		keys[ind], values[ind] = freeKey, nilValue
+
+		// now startPos is the position where current block start
+		freePtr := uint64(ind) // index in uint64 type
+		dis := distance(startPos, freePtr, mask)
+		ptr := freePtr
+
+	loop:
+		// iterate each point in block and check if swapable
+		ptr = (ptr + 1) & mask
+
+		if key = keys[ptr]; key != freeKey {
+			if phi = phiMix(uint64(key)) & mask; distance(startPos, phi, mask) <= dis { // swapable
+				keys[freePtr], values[freePtr] = key, values[ptr]
+				keys[ptr], values[ptr] = freeKey, nilValue
+
+				freePtr = ptr
+				dis = distance(startPos, freePtr, mask)
+			}
+
+			goto loop
+		}
+
+		m.shrink()
 	}
 }
 
@@ -224,6 +217,22 @@ func (m *Map) Iterate(handler func(keyType, valueType) error) (err error) {
 		}
 	}
 	return
+}
+
+// IterateAll iterates over map.
+func (m *Map) IterateAll(handler func(keyType, valueType)) {
+	if handler != nil {
+		values := m.values
+		for i, k := range m.keys {
+			if k != freeKey {
+				handler(k, values[i])
+			}
+		}
+
+		if m.hasFreeKey {
+			handler(freeKey, m.freeVal)
+		}
+	}
 }
 
 // Clone creates new map, copied from original one.
@@ -255,34 +264,30 @@ func (m *Map) Reset() {
 	m.size = 0
 }
 
+// (k != freeKey)
 func index(keys []keyType, mask uint64, k keyType) (ind int) {
-	if k != freeKey {
-		ptr := phiMix(uint64(k)) & mask
+	ptr := phiMix(uint64(k)) & mask
 
-		key := keys[ptr]
+	key := keys[ptr]
 
-		if key == k || key == freeKey {
-			ind = int(ptr)
-			return
-		}
-
-	loop:
-		ptr = (ptr + 1) & mask
-		key = keys[ptr]
-
-		if key == k || key == freeKey {
-			ind = int(ptr)
-			return
-		}
-		goto loop
+	if key == k || key == freeKey {
+		ind = int(ptr)
+		return
 	}
 
-	ind = -1
-	return
+loop:
+	ptr = (ptr + 1) & mask
+	key = keys[ptr]
+
+	if key == k || key == freeKey {
+		ind = int(ptr)
+		return
+	}
+	goto loop
 }
 
-// store on external keys/values collection
-func (m *Map) store(keys []keyType, values []valueType, mask uint64, k keyType, v valueType) (isNew bool) {
+// store on external keys/values collection (k != freeKey)
+func store(keys []keyType, values []valueType, mask uint64, k keyType, v valueType) (isNew bool) {
 	ind := index(keys, mask, k)
 
 	isNew = keys[ind] == freeKey
@@ -315,7 +320,7 @@ func (m *Map) grow() {
 	keys, values := make([]keyType, newCapacity), make([]valueType, newCapacity)
 	for i, oriKey := range oriKeys {
 		if oriKey != freeKey {
-			m.store(keys, values, mask, oriKey, oriValues[i])
+			store(keys, values, mask, oriKey, oriValues[i])
 		}
 	}
 
@@ -342,7 +347,7 @@ func (m *Map) shrink() {
 		keys, values := make([]keyType, newCapacity), make([]valueType, newCapacity)
 		for i, oriKey := range oriKeys {
 			if oriKey != freeKey {
-				m.store(keys, values, mask, oriKey, oriValues[i])
+				store(keys, values, mask, oriKey, oriValues[i])
 			}
 		}
 

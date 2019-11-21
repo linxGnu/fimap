@@ -47,6 +47,8 @@ func BenchmarkMapLarge(b *testing.B) {
 }
 
 func benchmarkFIMap(b *testing.B, set []keyType) {
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s, _ := New(0, 0.65)
 
@@ -60,6 +62,8 @@ func benchmarkFIMap(b *testing.B, set []keyType) {
 }
 
 func benchmarkMap(b *testing.B, set []keyType) {
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s := make(map[keyType]struct{})
 
